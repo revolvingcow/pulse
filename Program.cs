@@ -34,23 +34,6 @@ namespace pulse
 			var configurationServer = TfsConfigurationServerFactory.GetConfigurationServer(uri, new UICredentialsProvider());
 			configurationServer.EnsureAuthenticated();
 
-			// Start the sound board.
-			var soundBoard = new BackgroundWorker();
-			soundBoard.DoWork += (o, a) =>
-			{
-				while (!a.Cancel)
-				{
-					while (Sound.Queue.Count > 0)
-					{
-						Sound.Queue.Dequeue()();
-					}
-
-					// Pause.
-					new AutoResetEvent(false).WaitOne(new TimeSpan(0, 1, 0));
-				}
-			};
-			soundBoard.RunWorkerAsync();
-
 			// Start the TFS worker.
 			var worker = new BackgroundWorker();
 			worker.DoWork += (o, a) =>
@@ -136,6 +119,12 @@ namespace pulse
 				dashboard.Cache();
 				dashboard.Update();
 
+				// Play any queued sounds.
+				while (Sound.Queue.Count > 0)
+				{
+					Sound.Queue.Dequeue()();
+				}
+
 				var pause = new AutoResetEvent(false);
 				if (pause.WaitOne(new TimeSpan(0, 15, 0)))
 				{
@@ -207,14 +196,6 @@ namespace pulse
 				try
 				{
 					worker.CancelAsync();
-				}
-				catch
-				{
-				}
-
-				try
-				{
-					soundBoard.CancelAsync();
 				}
 				catch
 				{
