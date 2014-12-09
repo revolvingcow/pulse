@@ -1,12 +1,7 @@
 ﻿using System;
-using System.ComponentModel;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using Microsoft.TeamFoundation.Client;
-using Microsoft.TeamFoundation.Framework.Common;
-using Microsoft.TeamFoundation.VersionControl.Client;
-using Microsoft.TeamFoundation.WorkItemTracking.Client;
 
 namespace pulse
 {
@@ -35,109 +30,20 @@ namespace pulse
 			configurationServer.EnsureAuthenticated();
 
 			// Start the TFS worker.
-			var worker = new BackgroundWorker();
-			worker.DoWork += (o, a) =>
-			{
-				now = DateTime.Now;
-				dashboard.ClearHighlights();
-				Debug.WriteLine("Worker started at " + DateTime.Now);
+			var worker = new PollingService(configurationServer, dashboard);
 
-				if (a.Cancel)
-				{
-					return;
-				}
-
-				// Get all the project collections.
-				var collections = configurationServer.CatalogNode.QueryChildren(
-					new[] { CatalogResourceTypes.ProjectCollection },
-					false,
-					CatalogQueryOptions.None);
-
-				foreach (var collection in collections)
-				{
-					if (a.Cancel)
-					{
-						return;
-					}
-
-					// Find the project collection.
-					var projectCollectionId = new Guid(collection.Resource.Properties["InstanceId"]);
-					var projectCollection = configurationServer.GetTeamProjectCollection(projectCollectionId);
-
-					if (a.Cancel)
-					{
-						return;
-					}
-
-					// Get the projects.
-					var projects = projectCollection.CatalogNode.QueryChildren(
-						new[] { CatalogResourceTypes.TeamProject },
-						false,
-						CatalogQueryOptions.None);
-					dashboard.AddProjects(projects.ToArray());
-
-					if (a.Cancel)
-					{
-						return;
-					}
-
-					// Get the work history.
-					var workItemStore = projectCollection.GetService<WorkItemStore>();
-					var workItemCollection = workItemStore.Query("select * from workitems order by [changed date] asc");
-					if (dashboard.DateRefresh.HasValue)
-					{
-						dashboard.AddWorkItems(workItemCollection.Cast<WorkItem>().Where(x => x.ChangedDate > dashboard.DateRefresh.Value));
-					}
-					else
-					{
-						dashboard.AddWorkItems(workItemCollection.Cast<WorkItem>());
-					}
-
-					if (a.Cancel)
-					{
-						return;
-					}
-
-					// Get the commit log.
-					var versionControlServer = projectCollection.GetService<VersionControlServer>();
-					var commits = versionControlServer.QueryHistory("$/", RecursionType.Full);
-					if (dashboard.DateRefresh.HasValue)
-					{
-						dashboard.AddCommits(commits.Where(x => x.CreationDate > dashboard.DateRefresh.Value));
-					}
-					else
-					{
-						dashboard.AddCommits(commits);
-					}
-				}
-			};
-			worker.RunWorkerCompleted += (o, a) =>
-			{
-				Debug.WriteLine("Worker completed at " + DateTime.Now);
-
-				dashboard.DateRefresh = now;
-				dashboard.Cache();
-				dashboard.Update();
-
-				// Play any queued sounds.
-				while (Sound.Queue.Count > 0)
-				{
-					Sound.Queue.Dequeue()();
-				}
-
-				var pause = new AutoResetEvent(false);
-				if (pause.WaitOne(new TimeSpan(0, 15, 0)))
-				{
+			// Create a timer to run this in an interval.
+			var timer = new Timer(
+				(e) => {
 					worker.RunWorkerAsync();
-				}
-			};
-			worker.RunWorkerAsync();
-
+				},
+				null,
+				new TimeSpan(0, 0, 0, 0, 200),
+				new TimeSpan(0, 15, 0));
+			
 			var running = true;
 			while (running)
 			{
-				dashboard.Update();
-
 				// Listen for key events.
 				if (Console.KeyAvailable)
 				{
@@ -184,8 +90,17 @@ namespace pulse
 					}
 				}
 
-				if (running && autoResetEvent.WaitOne(new TimeSpan(0, 0, 0, 0, 100)))
+				if (running)
 				{
+					autoResetEvent.WaitOne(new TimeSpan(0, 0, 0, 0, 100));
+					dashboard.Update();
+
+					// Play any queued sounds.
+					while (Sound.Queue.Count > 0)
+					{
+						Sound.Queue.Dequeue()();
+					}
+
 					autoResetEvent.Reset();
 				}
 			}
@@ -199,6 +114,11 @@ namespace pulse
 				}
 				catch
 				{
+					// Stub.
+				}
+				finally
+				{
+					timer.Dispose();
 				}
 			}
 		}
