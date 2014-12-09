@@ -40,10 +40,13 @@ namespace pulse
 			{
 				while (!a.Cancel)
 				{
-					if (Sound.Queue.Count > 0)
+					while (Sound.Queue.Count > 0)
 					{
 						Sound.Queue.Dequeue()();
 					}
+
+					// Pause.
+					new AutoResetEvent(false).WaitOne(new TimeSpan(0, 1, 0));
 				}
 			};
 			soundBoard.RunWorkerAsync();
@@ -133,7 +136,11 @@ namespace pulse
 				dashboard.Cache();
 				dashboard.Update();
 
-				worker.RunWorkerAsync();
+				var pause = new AutoResetEvent(false);
+				if (pause.WaitOne(new TimeSpan(0, 15, 0)))
+				{
+					worker.RunWorkerAsync();
+				}
 			};
 			worker.RunWorkerAsync();
 
