@@ -6,48 +6,48 @@
 	public static class Rewards
 	{
 		/// <summary>
-		/// The participation.
+		/// The bug report.
 		/// </summary>
-		public const double Participation = 0.3;
-
-		/// <summary>
-		/// The verbosity.
-		/// </summary>
-		public const double Verbosity = 0.8;
+		public const string BugReport = "BugReport";
 
 		/// <summary>
 		/// The collaboration.
 		/// </summary>
-		public const double Collaboration = 0.7;
-
-		/// <summary>
-		/// The house cleaning.
-		/// </summary>
-		public const double HouseCleaning = 0.1;
-
-		/// <summary>
-		/// The due diligence.
-		/// </summary>
-		public const double DueDiligence = 0.4;
-
-		/// <summary>
-		/// The bug report.
-		/// </summary>
-		public const double BugReport = 0.7;
+		public const string Collaboration = "Collaboration";
 
 		/// <summary>
 		/// The created work.
 		/// </summary>
-		public const double CreatedWork = 0.02;
+		public const string CreatedWork = "CreatedWork";
+
+		/// <summary>
+		/// The due diligence.
+		/// </summary>
+		public const string DueDiligence = "DueDiligence";
 
 		/// <summary>
 		/// The finish work.
 		/// </summary>
-		public const double FinishWork = 0.5;
+		public const string FinishWork = "FinishWork";
+
+		/// <summary>
+		/// The house cleaning.
+		/// </summary>
+		public const string HouseCleaning = "HouseCleaning";
+
+		/// <summary>
+		/// The participation.
+		/// </summary>
+		public const string Participation = "Participation";
 
 		/// <summary>
 		/// The taking ownership.
 		/// </summary>
-		public const double TakingOwnership = 0.1;
+		public const string TakingOwnership = "TakingOwnership";
+
+		/// <summary>
+		/// The verbosity.
+		/// </summary>
+		public const string Verbosity = "Verbosity";
 	}
 }

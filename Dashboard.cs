@@ -14,12 +14,12 @@ namespace pulse
 	public class Dashboard
 	{
 		/// <summary>
-		/// Gets or sets the server.
+		/// Gets or sets the date refresh.
 		/// </summary>
 		/// <value>
-		/// The server.
+		/// The date refresh.
 		/// </value>
-		public Uri Server { get; set; }
+		public DateTime? DateRefresh { get; set; }
 
 		/// <summary>
 		/// Gets or sets the selected item.
@@ -30,28 +30,12 @@ namespace pulse
 		public int SelectedItem { get; set; }
 
 		/// <summary>
-		/// Gets or sets the date refresh.
+		/// Gets or sets the server.
 		/// </summary>
 		/// <value>
-		/// The date refresh.
+		/// The server.
 		/// </value>
-		public DateTime? DateRefresh { get; set; }
-
-		/// <summary>
-		/// Gets or sets the scores.
-		/// </summary>
-		/// <value>
-		/// The scores.
-		/// </value>
-		private IDictionary<string, double> Scores { get; set; }
-
-		/// <summary>
-		/// Gets or sets the highlighted scores.
-		/// </summary>
-		/// <value>
-		/// The highlighted scores.
-		/// </value>
-		private IList<string> HighlightedScores { get; set; }
+		public Uri Server { get; set; }
 
 		/// <summary>
 		/// Gets the cache file.
@@ -85,22 +69,6 @@ namespace pulse
 		private int Commits { get; set; }
 
 		/// <summary>
-		/// Gets or sets the projects.
-		/// </summary>
-		/// <value>
-		/// The projects.
-		/// </value>
-		private int Projects { get; set; }
-
-		/// <summary>
-		/// Gets or sets the work items.
-		/// </summary>
-		/// <value>
-		/// The work items.
-		/// </value>
-		private int WorkItems { get; set; }
-
-		/// <summary>
 		/// Gets the height.
 		/// </summary>
 		/// <value>
@@ -113,6 +81,38 @@ namespace pulse
 				return Console.WindowHeight - 2;
 			}
 		}
+
+		/// <summary>
+		/// Gets or sets the highlighted scores.
+		/// </summary>
+		/// <value>
+		/// The highlighted scores.
+		/// </value>
+		private IList<string> HighlightedScores { get; set; }
+
+		/// <summary>
+		/// Gets or sets the points.
+		/// </summary>
+		/// <value>
+		/// The points.
+		/// </value>
+		private IDictionary<string, double> Points { get; set; }
+
+		/// <summary>
+		/// Gets or sets the projects.
+		/// </summary>
+		/// <value>
+		/// The projects.
+		/// </value>
+		private int Projects { get; set; }
+
+		/// <summary>
+		/// Gets or sets the scores.
+		/// </summary>
+		/// <value>
+		/// The scores.
+		/// </value>
+		private IDictionary<string, double> Scores { get; set; }
 
 		/// <summary>
 		/// Gets the width.
@@ -129,6 +129,14 @@ namespace pulse
 		}
 
 		/// <summary>
+		/// Gets or sets the work items.
+		/// </summary>
+		/// <value>
+		/// The work items.
+		/// </value>
+		private int WorkItems { get; set; }
+
+		/// <summary>
 		/// Initializes a new instance of the <see cref="Dashboard" /> class.
 		/// </summary>
 		/// <param name="server">The server.</param>
@@ -142,6 +150,20 @@ namespace pulse
 			this.SelectedItem = 1;
 			this.Scores = new Dictionary<string, double>();
 			this.HighlightedScores = new List<string>();
+			this.Points = new Dictionary<string, double>()
+			{
+				{ Penalties.LackingVerbosity, -0.2 },
+				{ Penalties.LackOfPurpose, -0.2 },
+				{ Rewards.BugReport, 0.7 },
+				{ Rewards.Collaboration, 0.7 },
+				{ Rewards.CreatedWork, 0.02 },
+				{ Rewards.DueDiligence, 0.4 },
+				{ Rewards.FinishWork, 0.5 },
+				{ Rewards.HouseCleaning, 0.1 },
+				{ Rewards.Participation, 0.3 },
+				{ Rewards.TakingOwnership, 0.1 },
+				{ Rewards.Verbosity, 0.8 }
+			};
 
 			var cacheFile = new FileInfo(this.CacheFile);
 
@@ -188,6 +210,20 @@ namespace pulse
 								}
 
 								break;
+
+							case "point":
+								var pointValue = Convert.ToDouble(fields[2]);
+
+								if (!this.Points.ContainsKey(fields[1]))
+								{
+									this.Points.Add(fields[1], pointValue);
+								}
+								else
+								{
+									this.Points[fields[1]] = pointValue;
+								}
+
+								break;
 						}
 					}
 				}
@@ -214,26 +250,26 @@ namespace pulse
 				}
 
 				// Get a point for participation.
-				this.Scores[personOfInterest] += Rewards.Participation;
+				this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
 
 				// Handle points for commits with comments.
 				if (string.IsNullOrWhiteSpace(commit.Comment))
 				{
-					this.Scores[personOfInterest] += Penalties.LackingVerbosity;
+					this.Scores[personOfInterest] += this.GetPoints(Penalties.LackingVerbosity);
 				}
 				else
 				{
-					this.Scores[personOfInterest] += Rewards.Verbosity;
+					this.Scores[personOfInterest] += this.GetPoints(Rewards.Verbosity);
 				}
 
 				// Handle points with associating commits with actual work.
 				if (commit.AssociatedWorkItems.Count() == 0)
 				{
-					this.Scores[personOfInterest] += Penalties.LackOfPurpose;
+					this.Scores[personOfInterest] += this.GetPoints(Penalties.LackOfPurpose);
 				}
 				else
 				{
-					this.Scores[personOfInterest] += Rewards.Collaboration;
+					this.Scores[personOfInterest] += this.GetPoints(Rewards.Collaboration);
 				}
 			}
 		}
@@ -276,7 +312,7 @@ namespace pulse
 						}
 
 						// Add points for collaboration.
-						this.Scores[item.ChangedBy] += Rewards.Collaboration;
+						this.Scores[item.ChangedBy] += this.GetPoints(Rewards.Collaboration);
 					}
 				}
 				else
@@ -284,7 +320,7 @@ namespace pulse
 					if (!string.IsNullOrWhiteSpace(item.CreatedBy))
 					{
 						// They must have updated something right?
-						this.Scores[item.CreatedBy] += Rewards.Participation;
+						this.Scores[item.CreatedBy] += this.GetPoints(Rewards.Participation);
 					}
 				}
 
@@ -298,30 +334,30 @@ namespace pulse
 					switch (item.Type.Name.ToLower())
 					{
 						case "product backlog item":
-							this.Scores[personOfInterest] += Rewards.Participation;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
 							break;
 
 						case "user story":
-							this.Scores[personOfInterest] += Rewards.Participation;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
 							break;
 
 						case "feature":
-							this.Scores[personOfInterest] += Rewards.Participation;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
 							break;
 
 						case "task":
-							this.Scores[personOfInterest] += Rewards.CreatedWork;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.CreatedWork);
 							break;
 
 						case "impediment":
 						case "issue":
 						case "bug":
-							this.Scores[personOfInterest] += Rewards.BugReport;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.BugReport);
 							break;
 
 						case "test case":
 						case "shared steps":
-							this.Scores[personOfInterest] += Rewards.CreatedWork;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.CreatedWork);
 							break;
 
 						default:
@@ -338,18 +374,18 @@ namespace pulse
 						case "approved":
 						case "active":
 						case "in progress":
-							this.Scores[personOfInterest] += Rewards.TakingOwnership;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.TakingOwnership);
 							break;
 
 						case "done":
 						case "committed":
 						case "resolved":
 						case "closed":
-							this.Scores[personOfInterest] += Rewards.FinishWork;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.FinishWork);
 							break;
 
 						case "removed":
-							this.Scores[personOfInterest] += Rewards.HouseCleaning;
+							this.Scores[personOfInterest] += this.GetPoints(Rewards.HouseCleaning);
 							break;
 
 						default:
@@ -377,6 +413,11 @@ namespace pulse
 				foreach (var score in this.Scores)
 				{
 					writer.WriteLine(string.Format("{0};{1};{2}", "score", score.Key, score.Value));
+				}
+
+				foreach (var point in this.Points)
+				{
+					writer.WriteLine(string.Format("{0};{1};{2}", "point", point.Key, point.Value));
 				}
 			}
 		}
@@ -479,6 +520,21 @@ namespace pulse
 			{
 				this.HighlightedScores.Add(person);
 			}
+		}
+
+		/// <summary>
+		/// Gets the points.
+		/// </summary>
+		/// <param name="action">The action.</param>
+		/// <returns>Returns the point value for a specific action.</returns>
+		private double GetPoints(string action)
+		{
+			if (this.Points.ContainsKey(action))
+			{
+				return this.Points[action];
+			}
+
+			return 0.0;
 		}
 
 		/// <summary>

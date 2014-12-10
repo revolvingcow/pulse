@@ -8,11 +8,11 @@
 		/// <summary>
 		/// The lacking verbosity.
 		/// </summary>
-		public const double LackingVerbosity = -0.2;
+		public const string LackingVerbosity = "LackingVerbosity";
 
 		/// <summary>
 		/// The lack of purpose.
 		/// </summary>
-		public const double LackOfPurpose = -0.2;
+		public const string LackOfPurpose = "LackOfPurpose";
 	}
 }
