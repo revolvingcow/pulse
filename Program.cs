@@ -26,7 +26,7 @@ namespace pulse
 			var autoResetEvent = new AutoResetEvent(true);
 			var uri = new Uri(args[0]);
 			var dashboard = new Dashboard(uri);
-			var configurationServer = TfsConfigurationServerFactory.GetConfigurationServer(uri, new UICredentialsProvider());
+			var configurationServer = TfsConfigurationServerFactory.GetConfigurationServer(uri);
 			configurationServer.EnsureAuthenticated();
 
 			// Start the TFS worker.
