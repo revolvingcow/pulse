@@ -42,13 +42,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Dashboard.cs" />
-    <Compile Include="Penalties.cs" />
+    <Compile Include="Player.cs" />
     <Compile Include="PollingService.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Rewards.cs" />
+    <Compile Include="Points.cs" />
     <Compile Include="Sound.cs" />
     <Compile Include="TfsCredentialsProvider.cs" />
   </ItemGroup>

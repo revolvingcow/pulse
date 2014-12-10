@@ -50,7 +50,6 @@ namespace pulse
 			base.OnDoWork(e);
 
 			var now = DateTime.Now;
-			this.Dashboard.ClearHighlights();
 			Debug.WriteLine("Worker started at " + DateTime.Now);
 
 			if (e.Cancel)

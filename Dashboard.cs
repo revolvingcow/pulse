@@ -96,7 +96,7 @@ namespace pulse
 		/// <value>
 		/// The points.
 		/// </value>
-		private IDictionary<string, double> Points { get; set; }
+		private IDictionary<string, double> PointValues { get; set; }
 
 		/// <summary>
 		/// Gets or sets the projects.
@@ -112,7 +112,7 @@ namespace pulse
 		/// <value>
 		/// The scores.
 		/// </value>
-		private IDictionary<string, double> Scores { get; set; }
+		private IList<Player> Players { get; set; }
 
 		/// <summary>
 		/// Gets the width.
@@ -148,22 +148,9 @@ namespace pulse
 			this.DateRefresh = null;
 			this.Server = server;
 			this.SelectedItem = 1;
-			this.Scores = new Dictionary<string, double>();
+			this.Players = new List<Player>();
 			this.HighlightedScores = new List<string>();
-			this.Points = new Dictionary<string, double>()
-			{
-				{ Penalties.LackingVerbosity, -0.2 },
-				{ Penalties.LackOfPurpose, -0.2 },
-				{ Rewards.BugReport, 0.7 },
-				{ Rewards.Collaboration, 0.7 },
-				{ Rewards.CreatedWork, 0.02 },
-				{ Rewards.DueDiligence, 0.4 },
-				{ Rewards.FinishWork, 0.5 },
-				{ Rewards.HouseCleaning, 0.1 },
-				{ Rewards.Participation, 0.3 },
-				{ Rewards.TakingOwnership, 0.1 },
-				{ Rewards.Verbosity, 0.8 }
-			};
+			this.PointValues = Points.DefaultValues();
 
 			var cacheFile = new FileInfo(this.CacheFile);
 
@@ -198,15 +185,38 @@ namespace pulse
 								break;
 
 							case "score":
-								var points = Convert.ToDouble(fields[2]);
-
-								if (!this.Scores.ContainsKey(fields[1]))
+								var pointMetrics = Points.EmptyDefaultValues();
+								for (var i = 2; i < fields.Length; i++)
 								{
-									this.Scores.Add(fields[1], points);
+									var parts = fields[i].Split(new char[] { '=' });
+									if (parts.Length == 2)
+									{
+										double metricValue;
+										if (!double.TryParse(parts[1], out metricValue))
+										{
+											metricValue = 0.0;
+										}
+
+										if (pointMetrics.ContainsKey(parts[0]))
+										{
+											pointMetrics[parts[0]] = metricValue;
+										}
+										else
+										{
+											pointMetrics.Add(parts[0], metricValue);
+										}
+									}
+								}
+
+								if (this.Players.Any(x => x.Name.Equals(fields[1], StringComparison.InvariantCultureIgnoreCase)))
+								{
+									this.Players.First(x => x.Name.Equals(fields[1], StringComparison.InvariantCultureIgnoreCase)).PointMetrics = pointMetrics;
 								}
 								else
 								{
-									this.Scores[fields[1]] = points;
+									var player = new Player(fields[1]);
+									player.PointMetrics = pointMetrics;
+									this.Players.Add(player);
 								}
 
 								break;
@@ -214,13 +224,13 @@ namespace pulse
 							case "point":
 								var pointValue = Convert.ToDouble(fields[2]);
 
-								if (!this.Points.ContainsKey(fields[1]))
+								if (!this.PointValues.ContainsKey(fields[1]))
 								{
-									this.Points.Add(fields[1], pointValue);
+									this.PointValues.Add(fields[1], pointValue);
 								}
 								else
 								{
-									this.Points[fields[1]] = pointValue;
+									this.PointValues[fields[1]] = pointValue;
 								}
 
 								break;
@@ -243,33 +253,35 @@ namespace pulse
 
 				var personOfInterest = commit.CommitterDisplayName;
 				this.AddHighlightedScore(personOfInterest);
+				var player = this.Players.FirstOrDefault(x => x.Name.Equals(personOfInterest, StringComparison.InvariantCultureIgnoreCase));
 
-				if (!this.Scores.Any(x => x.Key.Equals(personOfInterest, StringComparison.InvariantCultureIgnoreCase)))
+				if (player == null)
 				{
-					this.Scores.Add(personOfInterest, 0);
+					player = new Player(personOfInterest);
+					this.Players.Add(player);
 				}
 
 				// Get a point for participation.
-				this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
+				player.PointMetrics[Points.Participation]++;
 
 				// Handle points for commits with comments.
 				if (string.IsNullOrWhiteSpace(commit.Comment))
 				{
-					this.Scores[personOfInterest] += this.GetPoints(Penalties.LackingVerbosity);
+					player.PointMetrics[Points.LackingVerbosity]++;
 				}
 				else
 				{
-					this.Scores[personOfInterest] += this.GetPoints(Rewards.Verbosity);
+					player.PointMetrics[Points.Verbosity]++;
 				}
 
 				// Handle points with associating commits with actual work.
 				if (commit.AssociatedWorkItems.Count() == 0)
 				{
-					this.Scores[personOfInterest] += this.GetPoints(Penalties.LackOfPurpose);
+					player.PointMetrics[Points.LackOfPurpose]++;
 				}
 				else
 				{
-					this.Scores[personOfInterest] += this.GetPoints(Rewards.Collaboration);
+					player.PointMetrics[Points.Collaboration]++;
 				}
 			}
 		}
@@ -294,33 +306,36 @@ namespace pulse
 				// Add to the overall tally.
 				this.WorkItems++;
 
-				if (!string.IsNullOrWhiteSpace(item.CreatedBy))
-				{
-					if (!this.Scores.Any(x => x.Key.Equals(item.CreatedBy, StringComparison.InvariantCultureIgnoreCase)))
-					{
-						this.Scores.Add(item.CreatedBy, 0);
-					}
-				}
-
 				if (item.CreatedBy != item.ChangedBy)
 				{
 					if (!string.IsNullOrWhiteSpace(item.ChangedBy))
 					{
-						if (!this.Scores.Any(x => x.Key.Equals(item.ChangedBy, StringComparison.InvariantCultureIgnoreCase)))
+						var player = this.Players.FirstOrDefault(x => x.Name.Equals(item.ChangedBy, StringComparison.InvariantCultureIgnoreCase));
+
+						if (player == null)
 						{
-							this.Scores.Add(item.ChangedBy, 0);
+							player = new Player(item.ChangedBy);
+							this.Players.Add(player);
 						}
 
 						// Add points for collaboration.
-						this.Scores[item.ChangedBy] += this.GetPoints(Rewards.Collaboration);
+						player.PointMetrics[Points.Collaboration]++;
 					}
 				}
 				else
 				{
 					if (!string.IsNullOrWhiteSpace(item.CreatedBy))
 					{
-						// They must have updated something right?
-						this.Scores[item.CreatedBy] += this.GetPoints(Rewards.Participation);
+						var player = this.Players.FirstOrDefault(x => x.Name.Equals(item.CreatedBy, StringComparison.InvariantCultureIgnoreCase));
+
+						if (player == null)
+						{
+							player = new Player(item.CreatedBy);
+							this.Players.Add(player);
+						}
+
+						// Add points for collaboration.
+						player.PointMetrics[Points.Participation]++;
 					}
 				}
 
@@ -331,66 +346,70 @@ namespace pulse
 
 				if (!string.IsNullOrWhiteSpace(personOfInterest))
 				{
-					switch (item.Type.Name.ToLower())
+					var player = this.Players.FirstOrDefault(x => x.Name.Equals(personOfInterest, StringComparison.InvariantCultureIgnoreCase));
+					if (player != null)
 					{
-						case "product backlog item":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
-							break;
+						switch (item.Type.Name.ToLower())
+						{
+							case "product backlog item":
+								player.PointMetrics[Points.Participation]++;
+								break;
 
-						case "user story":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
-							break;
+							case "user story":
+								player.PointMetrics[Points.Participation]++;
+								break;
 
-						case "feature":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.Participation);
-							break;
+							case "feature":
+								player.PointMetrics[Points.Participation]++;
+								break;
 
-						case "task":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.CreatedWork);
-							break;
+							case "task":
+								player.PointMetrics[Points.CreatedWork]++;
+								break;
 
-						case "impediment":
-						case "issue":
-						case "bug":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.BugReport);
-							break;
+							case "impediment":
+							case "issue":
+							case "bug":
+								player.PointMetrics[Points.BugReport]++;
+								break;
 
-						case "test case":
-						case "shared steps":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.CreatedWork);
-							break;
+							case "test case":
+							case "shared steps":
+								player.PointMetrics[Points.CreatedWork]++;
+								break;
 
-						default:
-							Debug.WriteLine("Did not handle work item type [" + item.Type.Name + "]");
-							break;
-					}
+							default:
+								Debug.WriteLine("Did not handle work item type [" + item.Type.Name + "]");
+								break;
+						}
 
-					switch (item.State.ToLower())
-					{
-						case "new":
-						case "design":
-						case "to do":
-						case "open":
-						case "approved":
-						case "active":
-						case "in progress":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.TakingOwnership);
-							break;
+						switch (item.State.ToLower())
+						{
+							case "new":
+							case "design":
+							case "to do":
+							case "open":
+							case "approved":
+							case "active":
+							case "in progress":
+								player.PointMetrics[Points.TakingOwnership]++;
+								break;
 
-						case "done":
-						case "committed":
-						case "resolved":
-						case "closed":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.FinishWork);
-							break;
+							case "done":
+							case "committed":
+							case "resolved":
+							case "closed":
+								player.PointMetrics[Points.FinishWork]++;
+								break;
 
-						case "removed":
-							this.Scores[personOfInterest] += this.GetPoints(Rewards.HouseCleaning);
-							break;
+							case "removed":
+								player.PointMetrics[Points.HouseCleaning]++;
+								break;
 
-						default:
-							Debug.WriteLine("Did not handle work item state [" + item.State + "]");
-							break;
+							default:
+								Debug.WriteLine("Did not handle work item state [" + item.State + "]");
+								break;
+						}
 					}
 				}
 			}
@@ -410,12 +429,15 @@ namespace pulse
 				writer.WriteLine(string.Format("{0};{1}", "work", this.WorkItems));
 				writer.WriteLine(string.Format("{0};{1}", "commits", this.Commits));
 
-				foreach (var score in this.Scores)
+				foreach (var player in this.Players)
 				{
-					writer.WriteLine(string.Format("{0};{1};{2}", "score", score.Key, score.Value));
+					writer.WriteLine(string.Format(
+						"{0};{1};{2}",
+						"score",
+						player.Name, string.Join(";", player.PointMetrics.Select(x => string.Format("{0}={1}", x.Key, x.Value)).ToArray())));
 				}
 
-				foreach (var point in this.Points)
+				foreach (var point in this.PointValues)
 				{
 					writer.WriteLine(string.Format("{0};{1};{2}", "point", point.Key, point.Value));
 				}
@@ -508,6 +530,9 @@ namespace pulse
 			{
 				Sound.Queue.Enqueue(Sound.Notify);
 			}
+
+			// Clear the displayed highlighting.
+			this.ClearHighlights();
 		}
 
 		/// <summary>
@@ -516,7 +541,7 @@ namespace pulse
 		/// <param name="person">The person.</param>
 		private void AddHighlightedScore(string person)
 		{
-			if (this.Scores.ContainsKey(person) && !this.HighlightedScores.Contains(person))
+			if (this.Players.Any(x => x.Name.Equals(person, StringComparison.InvariantCultureIgnoreCase)) && !this.HighlightedScores.Contains(person))
 			{
 				this.HighlightedScores.Add(person);
 			}
@@ -529,9 +554,9 @@ namespace pulse
 		/// <returns>Returns the point value for a specific action.</returns>
 		private double GetPoints(string action)
 		{
-			if (this.Points.ContainsKey(action))
+			if (this.PointValues.ContainsKey(action))
 			{
-				return this.Points[action];
+				return this.PointValues[action];
 			}
 
 			return 0.0;
@@ -567,13 +592,14 @@ namespace pulse
 		/// <returns></returns>
 		private IEnumerable<string> Leadboard()
 		{
-			if (this.Scores == null || this.Scores.Count() == 0)
+			if (this.Players == null || this.Players.Count() == 0)
 			{
 				return new List<string>();
 			}
 
 			var rank = 0;
-			return this.Scores
+			return this.Players
+				.Select(x => new KeyValuePair<string, double>(x.Name, x.Score(this.PointValues)))
 				.OrderByDescending(x => x.Value)
 				.Select(x =>
 				{
